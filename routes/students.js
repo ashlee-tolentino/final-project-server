@@ -28,43 +28,71 @@ const ash = require('express-async-handler');
 // Automatically catches any error and sends to Routing Error-Handling Middleware (app.js)
 // It is the same as using "try-catch" and calling next(error)
 router.get('/', ash(async(req, res) => {
-  let students = await Student.findAll({include: [Campus]});
+  const students = await Student.findAll({include: [Campus]});
   res.status(200).json(students);  // Status code 200 OK - request succeeded
 }));
 
 /* GET STUDENT BY ID */
 router.get('/:id', ash(async(req, res) => {
   // Find student by Primary Key
-  let student = await Student.findByPk(req.params.id, {include: [Campus]});  // Get the student and its associated campus
+  const student = await Student.findByPk(req.params.id, {include: [Campus]});  // Get the student and its associated campus
+  
+  // If student not found, respond with 404
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+  
   res.status(200).json(student);  // Status code 200 OK - request succeeded
 }));
 
 /* ADD NEW STUDENT */
-router.post('/', function(req, res, next) {
-  Student.create(req.body)
-    .then(createdStudent => res.status(200).json(createdStudent))
-    .catch(err => next(err));
-});
+router.post(
+  '/',
+  ash(async (req, res) => {
+    // Student model validations (firstName, lastName, email, gpa, etc.) will run here
+    const newStudent = await Student.create(req.body);
+    // 201 Created - successful creation of a resource
+    res.status(201).json(newStudent);
+  })
+);
 
 /* DELETE STUDENT */
-router.delete('/:id', function(req, res, next) {
-  Student.destroy({
-    where: {
-      id: req.params.id
+router.delete(
+  '/:id',
+  ash(async (req, res) => {
+    const student = await Student.findByPk(req.params.id);
+
+    // If student not found, respond with 404
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
     }
+
+    await student.destroy();
+    // 204 No Content - successfully deleted, no body returned
+    res.status(204).end();
   })
-    .then(() => res.status(200).json("Deleted a student!"))
-    .catch(err => next(err));
-});
+);
 
 /* EDIT STUDENT */
 router.put('/:id', ash(async(req, res) => {
-  await Student.update(req.body,
-        { where: {id: req.params.id} }
-  );
-  // Find student by Primary Key
-  let student = await Student.findByPk(req.params.id);
-  res.status(201).json(student);  // Status code 201 Created - successful creation of a resource
+  // Find student first
+    const student = await Student.findByPk(req.params.id);
+
+    if (!student) {
+      return res.status(404).json({ error: 'Student not found' });
+    }
+
+    // Update student with data from request body
+    // This can include changing campusId to enroll/transfer/unassign
+    await student.update(req.body);
+
+    // Reload with associated campus so client gets updated relationship
+    const updatedStudent = await Student.findByPk(req.params.id, {
+      include: [Campus],
+    });
+
+    // 200 OK - successful update
+    res.status(200).json(updatedStudent);
 }));
 
 // Export router, so that it can be imported to construct the apiRouter (app.js)
